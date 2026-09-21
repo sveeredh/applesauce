@@ -19,6 +19,7 @@ import uuid
 import pandas as pd
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
+from batch_detect import read_batch_file, competitor_key
 
 from applesauce import (
     get_competitor_specs_leniently,
@@ -283,7 +284,10 @@ def _process_batch_job(job_id, df):
 
     for index, row in df.iterrows():
         part = str(row[BATCH_PART_COL]).strip()
-        competitor = str(row[BATCH_NAME_COL]).strip().lower()
+        raw_name = str(row[BATCH_NAME_COL]).strip()
+        # "Alpha & Omega Semiconductor Ltd" -> "aos". The dispatcher matches
+        # alias tokens, so a formal name has to be converted before lookup.
+        competitor = competitor_key(raw_name) or raw_name.lower()
         result = {
             "part": part,
             "competitor": canonical_competitor_name(competitor),
@@ -333,22 +337,19 @@ def batch_start():
     if "file" not in request.files:
         return jsonify({"error": "No file uploaded"}), 400
     try:
-        batch_df = pd.read_excel(io.BytesIO(request.files["file"].read()))
+        batch_df, detected = read_batch_file(request.files["file"], all_dfs)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:
-        return jsonify({"error": f"Could not read Excel file: {exc}"}), 400
+        return jsonify({"error": f"Could not read the file: {exc}"}), 400
 
-    missing = [c for c in (BATCH_PART_COL, BATCH_NAME_COL) if c not in batch_df.columns]
-    if missing:
-        return jsonify({
-            "error": f"File must have '{BATCH_PART_COL}' and '{BATCH_NAME_COL}' columns "
-                     f"(missing: {', '.join(missing)})"
-        }), 400
+    print(f"Batch columns: parts from {detected['part_column']}, "
+          f"competitors from {detected['competitor_column']}")
 
     job_id = str(uuid.uuid4())
     jobs[job_id] = {"progress": 0, "total": len(batch_df), "status": "processing", "results": []}
     threading.Thread(target=_process_batch_job, args=(job_id, batch_df), daemon=True).start()
-    return jsonify({"job_id": job_id})
-
+    return jsonify({"job_id": job_id, "detected": detected})
 
 @app.route("/batch_files/<job_id>", methods=["GET"])
 def batch_files(job_id):
