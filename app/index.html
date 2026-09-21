@@ -272,11 +272,20 @@
   .error-msg.visible { display: block; }
 
   .results-container { display: none; margin-top: 28px; }
-  .results-container.visible { display: block; }
+  /* Only as wide as the table inside needs, up to the full page width, and
+     centred. The title and Copy button sit on the table's edges, not the page's. */
+  .results-container.visible {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
   .results-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 24px;
     margin-bottom: 14px;
   }
   .results-header h3 {
@@ -305,7 +314,7 @@
   
   .spec-table-wrap, .batch-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--white); }
   .spec-table, .batch-table {
-    width: 100%;
+    width: auto;
     border-collapse: collapse;
     font-size: 13px;
   }
@@ -345,7 +354,8 @@
   /* Too narrow even for that: every cell may wrap, mid-part-number if it has
      to, so the table always fits the page instead of scrolling sideways. */
   @media (max-width: 860px) {
-    .spec-table th, .spec-table td, .batch-table th, .batch-table td {
+    .spec-table th, .spec-table td, .batch-table th, .batch-table td,
+    .spec-table .val, .spec-table .param-name {
       white-space: normal;
       overflow-wrap: anywhere;
     }
