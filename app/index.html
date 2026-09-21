@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TI Cross Reference Tool</title>
+<style>
+  :root {
+    --red:    #cc0000;
+    --dark:   #1a1a1a;
+    --mid:    #555;
+    --light:  #f5f5f5;
+    --white:  #fff;
+    --border: #ddd;
+    --radius: 4px;
+    --mono:   'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--white); /* Corrected to white */
+    color: var(--dark);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 3px solid var(--red);
+    padding: 22px 32px;
+    background: var(--white); /* Corrected to white */
+  }
+  .logo-img {
+    height: 45px;
+  }
+
+  /* ── Main layout ── */
+  main {
+    max-width: 980px;
+    margin: 48px auto;
+    padding: 0 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .page-title {
+    font-size: 28px;
+    font-weight: 300;
+    color: var(--dark);
+    margin-bottom: 48px;
+    letter-spacing: .02em;
+  }
+
+  .form-container {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 40px;
+    width: 100%;
+    max-width: 800px;
+  }
+
+  .input-section {
+    flex: 1;
+    transition: opacity 0.2s;
+  }
+  .input-section.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+  
+  .or-divider {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--mid);
+    padding-top: 50px;
+  }
+
+  /* ── Form fields ── */
+  .field { margin-bottom: 20px; }
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dark);
+    margin-bottom: 8px;
+  }
+
+  .field input[type="text"] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    outline: none;
+    transition: border-color .12s;
+    background-color: var(--white);
+  }
+  .field input[type="text"]:focus { border-color: var(--red); }
+
+  /* Competitor picker: an input with a filtered list under it. A native
+     <select> was not an option -- the user types a shorthand like "lf" or
+     "aos" and needs to see "Littelfuse Inc" before committing. */
+  .combo { position: relative; }
+  /* Caret, so the field reads as a dropdown before anything is typed. */
+  .combo::after {
+    content: '';
+    position: absolute;
+    right: 14px;
+    bottom: 18px;
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid var(--mid);
+    pointer-events: none;
+  }
+  .combo input[type="text"] { padding-right: 32px; }
+  .combo-list {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 12px rgba(0,0,0,.10);
+    display: none;
+  }
+  .combo-list.open { display: block; }
+  .combo-option {
+    padding: 9px 12px;
+    font-size: 14px;
+    color: var(--dark);
+    cursor: pointer;
+    border-bottom: 1px solid var(--light);
+  }
+  .combo-option:last-child { border-bottom: none; }
+  .combo-option:hover,
+  .combo-option.active { background: var(--light); }
+  .combo-option mark { background: #ffe8e8; color: var(--red); padding: 0; }
+  .combo-empty { padding: 9px 12px; font-size: 13px; color: var(--mid); }
+  .combo-empty.error { color: var(--red); }
+
+  /* ── File drop zone ── */
+  .dropzone {
+    border: 2px dotted var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    background-color: var(--white);
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--red);
+    background: #fafafa;
+  }
+  .dropzone input[type="file"] { display: none; }
+  .dropzone .drop-icon { font-size: 32px; margin-bottom: 10px; }
+  .dropzone .drop-label { font-size: 14px; font-weight: 600; color: var(--dark); }
+  .dropzone .drop-sub { font-size: 12px; color: var(--mid); margin-top: 5px; }
+  
+  .file-info {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .file-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dark);
+  }
+  .file-remove-btn {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--red);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .file-remove-btn:hover { text-decoration: underline; }
+
+  /* ── Submit button & Loading Bar ── */
+  .submit-section {
+    margin-top: 24px;
+    width: 100%;
+    text-align: center;
+    min-height: 80px;
+  }
+  .submit-btn {
+    background: var(--red);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius);
+    padding: 12px 40px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: .03em;
+    transition: opacity .15s;
+    margin-bottom: 12px;
+  }
+  .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
+  .submit-btn:not(:disabled):hover { opacity: .88; }
+  
+  .progress-bar-container {
+      display: none;
+      width: 100%;
+      max-width: 300px;
+      height: 12px;
+      background-color: #e9e9e9;
+      border-radius: 6px;
+      margin: 0 auto;
+  }
+  .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background-color: var(--red);
+      border-radius: 6px;
+      transition: width 0.25s linear;
+  }
+  .progress-text {
+      font-size: 12px;
+      color: var(--mid);
+      margin-top: 4px;
+      height: 16px;
+  }
+  .reset-btn {
+    background: none;
+    border: none;
+    color: var(--mid);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    display: block;
+    margin: 12px auto 0;
+  }
+  .reset-btn:hover:not(:disabled) {
+    color: var(--red);
+    text-decoration: underline;
+  }
+  .reset-btn:disabled {
+    color: #ccc;
+    cursor: not-allowed;
+    text-decoration: none;
+  }
+
+  /* ── Status and Results Area ── */
+  .status-container {
+    margin-top: 48px;
+    width: 100%;
+    max-width: 900px;
+  }
+
+  .error-msg {
+    display: none;
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: #fff0f0;
+    border: 1px solid #f5c0c0;
+    border-radius: var(--radius);
+    font-size: 13px;
+    color: #a00;
+  }
+  .error-msg.visible { display: block; }
+
+  .results-container { display: none; margin-top: 28px; }
+  .results-container.visible { display: block; }
+  .results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .results-header h3 {
+    font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--mid); margin: 0;
+  }
+  .results-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .action-btn {
+    background: var(--red);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius);
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: none;
+    transition: opacity .15s;
+  }
+  .action-btn:hover {
+    opacity: 0.88;
+  }
+  
+  .spec-table-wrap, .batch-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--white); }
+  .spec-table, .batch-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .spec-table th, .batch-table th {
+    text-align: left; font-size: 11px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; padding: 10px 14px; background: var(--light);
+    border-bottom: 2px solid var(--border); white-space: nowrap;
+  }
+  .spec-table td, .batch-table td {
+    padding: 9px 14px; border-bottom: 1px solid var(--border);
+  }
+  .spec-table tr:last-child td, .batch-table tr:last-child td { border-bottom: none; }
+  .spec-table tr:hover td, .batch-table tr:hover td { background: #fafafa; }
+  .spec-table .param-name { font-size: 12px; font-weight: 600; color: var(--mid); white-space: nowrap; }
+  .spec-table .val, .batch-table td { font-family: var(--mono); }
+  .spec-table .val.dash, .batch-table td.dash { color: var(--fade); }
+  
+  /* --- See All / Fade Effect --- */
+  #batch-table-container.is-truncated .batch-table-wrap {
+    max-height: 240px; /* Approx 5 rows + header */
+    overflow: hidden;
+    position: relative;
+    border-bottom: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  #batch-table-container.is-truncated .batch-table-wrap::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(to bottom, transparent, var(--white));
+    pointer-events: none;
+  }
+  .see-all-container {
+    text-align: center;
+    border: 1px solid var(--border);
+    border-top: none;
+    border-bottom-left-radius: var(--radius);
+    border-bottom-right-radius: var(--radius);
+    padding: 10px;
+    background: var(--white);
+  }
+  .see-all-btn {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--mid);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+  .see-all-btn:hover {
+    color: var(--red);
+  }
+
+  @media (max-width: 600px) {
+    .form-container { flex-direction: column; align-items: center; }
+    .or-divider { padding-top: 0; padding-bottom: 16px; }
+    .input-section { width: 100%; max-width: 350px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="ti.png" alt="Texas Instruments Logo" class="logo-img">
+</header>
+
+<main>
+  <h1 class="page-title">Cross Reference Tool</h1>
+
+  <div class="form-container">
+    <div class="input-section" id="single-cross-section">
+      <div class="field">
+        <label for="part">Enter a part name</label>
+        <input type="text" id="part" placeholder="e.g. ESD5Z12T1G">
+      </div>
+      <div class="field combo" id="competitor-combo">
+        <label for="competitor">Enter the competitor</label>
+        <input type="text" id="competitor" placeholder="e.g. onsemi"
+               autocomplete="off" role="combobox" aria-expanded="false"
+               aria-autocomplete="list" aria-controls="competitor-list">
+        <div class="combo-list" id="competitor-list" role="listbox"></div>
+      </div>
+    </div>
+
+    <div class="or-divider">OR</div>
+
+    <div class="input-section" id="batch-cross-section">
+      <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+        <input type="file" id="file-input" accept=".xlsx,.xls" onchange="handleFile(this)">
+        <div class="drop-icon">📂</div>
+        <div class="drop-label">Choose an Excel input file</div>
+        <div class="drop-sub">or drag and drop here</div>
+        <div class="file-info" id="file-info">
+          <span class="file-name" id="file-name"></span>
+          <a href="#" class="file-remove-btn" id="file-remove-btn">(remove)</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submit-section">
+    <button class="submit-btn" id="submit-btn" onclick="handleSubmit()" disabled>Generate Comparison</button>
+    <button class="reset-btn" id="reset-btn" onclick="resetForm()">Reset</button>
+
+    <div class="progress-bar-container" id="progress-container">
+        <div class="progress-bar-fill" id="progress-bar"></div>
+        <div class="progress-text" id="progress-text"></div>
+    </div>
+  </div>
+
+  <div class="status-container">
+    <div class="error-msg" id="error-msg"></div>
+    <div class="results-container" id="results-container">
+      <div class="results-header">
+        <h3 id="results-title"></h3>
+        <div class="results-actions" id="results-actions">
+           <button class="action-btn" id="copy-btn" onclick="copyTableToClipboard()">Copy</button>
+           <button class="action-btn" id="download-btn" onclick="downloadCSV()">Download CSV</button>
+        </div>
+      </div>
+      <div class="spec-table-wrap" id="spec-results-wrapper"><table class="spec-table" id="spec-table"></table></div>
+      
+      <div id="batch-table-container">
+        <div class="batch-table-wrap" id="batch-results-wrapper">
+            <table class="batch-table" id="batch-table"></table>
+        </div>
+        <div class="see-all-container" id="see-all-container" style="display: none;">
+            <button class="see-all-btn" id="see-all-btn">See All</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</main>
+
+<script>
+const API = "http://localhost:5000";
+
+// --- UI Elements ---
+const partInput = document.getElementById('part');
+const competitorInput = document.getElementById('competitor');
+const competitorCombo = document.getElementById('competitor-combo');
+const competitorList = document.getElementById('competitor-list');
+const fileInput = document.getElementById('file-input');
+const submitBtn = document.getElementById('submit-btn');
+const resetBtn = document.getElementById('reset-btn');
+const singleSection = document.getElementById('single-cross-section');
+const batchSection = document.getElementById('batch-cross-section');
+const dropzone = document.getElementById("dropzone");
+const progressContainer = document.getElementById('progress-container');
+const progressBar = document.getElementById('progress-bar');
+const progressText = document.getElementById('progress-text');
+const fileInfo = document.getElementById('file-info');
+const fileNameEl = document.getElementById('file-name');
+const fileRemoveBtn = document.getElementById('file-remove-btn');
+const batchTableContainer = document.getElementById('batch-table-container');
+const seeAllContainer = document.getElementById('see-all-container');
+const seeAllBtn = document.getElementById('see-all-btn');
+
+// --- State Management ---
+let inputFile = null;
+let batchData = [];
+let specData = {};
+let pollInterval = null;
+let competitors = [];          // [{name, key, aliases}] from GET /competitors
+let comboMatches = [];         // what is currently listed
+let comboActive = -1;          // keyboard highlight
+let competitorKey = null;      // lookup token for the picked competitor
+let competitorsFailed = false; // /competitors unreachable -- say so, don't hide it
+let suppressComboOpen = false; // stops the list reopening on the click that picked
+
+// --- Event Listeners ---
+partInput.addEventListener('input', updateUIState);
+competitorInput.addEventListener('input', () => {
+  // Free typing clears the pick; whatever is typed is sent as-is unless an
+  // option is chosen, so an unlisted competitor still works.
+  competitorKey = null;
+  openCombo(competitorInput.value);
+  updateUIState();
+});
+competitorInput.addEventListener('focus', () => openCombo(competitorInput.value));
+competitorInput.addEventListener('click', () => openCombo(competitorInput.value));
+competitorInput.addEventListener('keydown', handleComboKeys);
+partInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !submitBtn.disabled) { e.preventDefault(); handleSubmit(); }
+});
+document.addEventListener('click', (e) => {
+  if (!competitorCombo.contains(e.target)) closeCombo();
+});
+dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("drag-over"); });
+dropzone.addEventListener("dragleave", () => dropzone.classList.remove("drag-over"));
+dropzone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropzone.classList.remove("drag-over");
+  if (e.dataTransfer.files.length > 0) handleFile({ files: [e.dataTransfer.files[0]] });
+});
+fileRemoveBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    removeFile();
+});
+seeAllBtn.addEventListener('click', () => {
+    batchTableContainer.classList.remove('is-truncated');
+    seeAllContainer.style.display = 'none';
+});
+
+// --- Competitor picker ---
+async function loadCompetitors() {
+  try {
+    const res = await fetch(`${API}/competitors`);
+    const data = await res.json();
+    competitors = data.competitors || [];
+  } catch (e) {
+    // The backend is the only source for this list, so there is no stale
+    // hardcoded copy to fall back on. Flag it instead of failing silently --
+    // an api.py that predates GET /competitors 404s here, and a field that
+    // quietly stays a plain text box gives no clue why.
+    competitors = [];
+    competitorsFailed = true;
+  }
+}
+loadCompetitors().then(() => {
+  // The fetch may land after the user has already clicked into the field.
+  if (document.activeElement === competitorInput) openCombo(competitorInput.value);
+});
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+function highlight(text, query) {
+  const safe = escapeHtml(text);
+  if (!query) return safe;
+  const at = text.toLowerCase().indexOf(query.toLowerCase());
+  if (at < 0) return safe;
+  return escapeHtml(text.slice(0, at))
+       + '<mark>' + escapeHtml(text.slice(at, at + query.length)) + '</mark>'
+       + escapeHtml(text.slice(at + query.length));
+}
+
+function matchCompetitors(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return competitors.slice();
+  const scored = [];
+  for (const c of competitors) {
+    const name = c.name.toLowerCase();
+    const aliasHit = (c.aliases || []).some(a => a.toLowerCase().startsWith(q));
+    let rank = null;
+    if (aliasHit) rank = 0;                     // "lf" -> Littelfuse Inc
+    else if (name.startsWith(q)) rank = 1;      // "litt" -> Littelfuse Inc
+    else if (name.includes(q)) rank = 2;        // "fuse" -> Littelfuse Inc
+    else if ((c.aliases || []).some(a => a.toLowerCase().includes(q))) rank = 3;
+    if (rank !== null) scored.push({ c, rank });
+  }
+  scored.sort((a, b) => a.rank - b.rank || a.c.name.localeCompare(b.c.name));
+  return scored.map(s => s.c);
+}
+
+function openCombo(query) {
+  if (suppressComboOpen) return;
+  // A field already holding a full company name lists everyone, rather than
+  // that one name matching itself.
+  if (competitors.some(c => c.name === query.trim())) query = '';
+  comboMatches = competitors.length ? matchCompetitors(query) : [];
+  comboActive = -1;
+  if (competitorsFailed) {
+    competitorList.innerHTML =
+      '<div class="combo-empty error">Competitor list unavailable &mdash; restart api.py, '
+      + 'then reload. Typing the name still works.</div>';
+  } else if (!competitors.length) {
+    competitorList.innerHTML = '<div class="combo-empty">Loading competitors&hellip;</div>';
+  } else if (!comboMatches.length) {
+    competitorList.innerHTML =
+      '<div class="combo-empty">No match &mdash; press Generate to search anyway</div>';
+  } else {
+    const q = query.trim();
+    // Aliases are matched against but never shown -- they are lookup tokens,
+    // not something the user picks by.
+    competitorList.innerHTML = comboMatches.map((c, i) => `
+      <div class="combo-option" role="option" data-index="${i}">${highlight(c.name, q)}</div>`
+    ).join('');
+    competitorList.querySelectorAll('.combo-option').forEach(el => {
+      // mousedown, not click: blur would close the list before a click lands.
+      el.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        pickCompetitor(Number(el.dataset.index));
+      });
+    });
+  }
+  competitorList.classList.add('open');
+  competitorInput.setAttribute('aria-expanded', 'true');
+}
+
+function closeCombo() {
+  competitorList.classList.remove('open');
+  competitorInput.setAttribute('aria-expanded', 'false');
+  comboActive = -1;
+}
+
+function setComboActive(next) {
+  const options = competitorList.querySelectorAll('.combo-option');
+  if (!options.length) return;
+  comboActive = (next + options.length) % options.length;
+  options.forEach((el, i) => el.classList.toggle('active', i === comboActive));
+  options[comboActive].scrollIntoView({ block: 'nearest' });
+}
+
+function resolveTypedCompetitor() {
+  /*
+   * What the user typed -> a competitor, without making them touch the list.
+   * An exact name or alias wins outright ("ever", "lf", "aos"); failing that,
+   * a query narrowed to a single company is taken as that company. Anything
+   * still ambiguous returns null and the raw text is sent, so an unlisted
+   * competitor is never blocked.
+   */
+  const q = competitorInput.value.trim().toLowerCase();
+  if (!q || !competitors.length) return null;
+  const exact = competitors.find(c =>
+    c.name.toLowerCase() === q || (c.aliases || []).some(a => a.toLowerCase() === q));
+  if (exact) return exact;
+  const matches = matchCompetitors(q);
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function applyCompetitor(chosen) {
+  competitorInput.value = chosen.name;
+  competitorKey = chosen.key;
+}
+
+function pickCompetitor(index) {
+  const chosen = comboMatches[index];
+  if (!chosen) return;
+  // Shown: the formal name. Sent: the lookup token, because
+  // get_competitor_specs_leniently matches aliases as substrings and would not
+  // recognise "Alpha & Omega Semiconductor Ltd".
+  applyCompetitor(chosen);
+  closeCombo();
+  // The click that picked is still in flight and would land on the field and
+  // reopen the list, showing the chosen name matching itself.
+  suppressComboOpen = true;
+  setTimeout(() => { suppressComboOpen = false; }, 0);
+  updateUIState();
+}
+
+function handleComboKeys(e) {
+  const isOpen = competitorList.classList.contains('open');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    if (!isOpen) { openCombo(competitorInput.value); return; }
+    setComboActive(comboActive + 1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (isOpen) setComboActive(comboActive - 1);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (isOpen && comboActive >= 0) {
+      // An arrowed-to option is a selection, not a submission -- a second
+      // Enter runs the cross.
+      pickCompetitor(comboActive);
+      return;
+    }
+    // Nothing highlighted: resolve whatever was typed and run the cross, so
+    // typing an alias and hitting Enter is enough on its own.
+    const hit = resolveTypedCompetitor();
+    if (hit) applyCompetitor(hit);
+    closeCombo();
+    updateUIState();
+    if (!submitBtn.disabled) handleSubmit();
+  } else if (e.key === 'Escape') {
+    closeCombo();
+  }
+}
+
+function competitorValue() {
+  return (competitorKey || competitorInput.value).trim();
+}
+
+// --- UI State Logic ---
+function updateUIState() {
+  const isSingleValid = partInput.value.trim() !== '' && competitorInput.value.trim() !== '';
+  const isBatchValid = inputFile !== null;
+
+  batchSection.classList.toggle('disabled', isSingleValid);
+  singleSection.classList.toggle('disabled', isBatchValid);
+  submitBtn.disabled = !isSingleValid && !isBatchValid;
+}
+
+function handleFile(input) {
+  inputFile = input.files[0] || null;
+  if (inputFile) {
+    fileNameEl.textContent = inputFile.name;
+    fileInfo.style.display = 'flex';
+  } else {
+    removeFile();
+  }
+  updateUIState();
+}
+
+function removeFile() {
+    fileInput.value = '';
+    inputFile = null;
+    fileNameEl.textContent = '';
+    fileInfo.style.display = 'none';
+    updateUIState();
+}
+
+function resetForm() {
+    partInput.value = '';
+    competitorInput.value = '';
+    competitorKey = null;
+    closeCombo();
+    removeFile();
+    hideAllResults();
+    showError("");
+    updateUIState();
+    if (pollInterval) clearInterval(pollInterval);
+}
+
+// --- Submission Logic ---
+function handleSubmit() {
+    // Clicking the button skips the keydown path, so resolve here too.
+    if (!competitorKey) {
+      const hit = resolveTypedCompetitor();
+      if (hit) applyCompetitor(hit);
+    }
+    closeCombo();
+    if (partInput.value.trim() !== '' && competitorInput.value.trim() !== '') {
+        submitSpec();
+    } else if (inputFile !== null) {
+        submitBatch();
+    }
+}
+
+// --- Helpers ---
+function showLoading(on) {
+  submitBtn.style.display = on ? 'none' : 'inline-block';
+  resetBtn.style.display = on ? 'none' : 'block';
+  progressContainer.style.display = on ? 'block' : 'none';
+  resetBtn.disabled = on;
+  if (!on) {
+    if (pollInterval) clearInterval(pollInterval);
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById("error-msg");
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function hideAllResults() {
+  document.getElementById("results-container").classList.remove("visible");
+  batchTableContainer.classList.remove('is-truncated');
+  seeAllContainer.style.display = 'none';
+}
+
+// --- Real Progress Bar Logic ---
+function pollForProgress(jobId) {
+    pollInterval = setInterval(async () => {
+        try {
+            const res = await fetch(`${API}/batch_status/${jobId}`);
+            if (!res.ok) throw new Error("Could not get job status.");
+            const data = await res.json();
+            const percent = data.total > 0 ? (data.progress / data.total) * 100 : 0;
+            progressBar.style.width = `${percent}%`;
+            progressText.textContent = `Processing ${data.progress} of ${data.total}...`;
+
+            if (data.status === 'complete') {
+                clearInterval(pollInterval);
+                pollInterval = null;
+                showLoading(false);
+                batchData = data.results;
+                displayBatchResults(data.results);
+            }
+        } catch (error) {
+            clearInterval(pollInterval); pollInterval = null;
+            showError(error.message); showLoading(false);
+        }
+    }, 500);
+}
+
+// --- API Calls ---
+async function submitSpec() {
+  showError(""); hideAllResults(); showLoading(true);
+  try {
+    const res = await fetch(`${API}/specs`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ part: partInput.value.trim(), competitor: competitorValue() }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Unknown server error");
+    specData = data;
+    displaySpecResults(data);
+  } catch (e) {
+    showError(e.message);
+  } finally {
+    showLoading(false);
+  }
+}
+
+async function submitBatch() {
+  showError(""); hideAllResults(); showLoading(true);
+  const form = new FormData();
+  form.append("file", inputFile);
+  try {
+    const res = await fetch(`${API}/batch_start`, { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not start batch job.");
+    pollForProgress(data.job_id);
+  } catch (e) {
+    showError(e.message);
+    showLoading(false);
+  }
+}
+
+// --- Result Display ---
+function displaySpecResults(data) {
+  const table = document.getElementById("spec-table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>Parameter</th><th>Competitor (${data.competitor_part.toUpperCase()})</th>
+      ${(data.alt_names || []).map(n => `<th class="ti-col">TI Alt (${n})</th>`).join('')}
+      ${Array(3 - (data.alt_names || []).length).fill('<th class="ti-col">TI Alt (—)</th>').join('')}
+    </tr></thead>
+    <tbody>${(data.rows || []).map(row => `
+      <tr>
+        <td class="param-name">${row.label}</td>
+        <td class="val ${row.comp === '-' ? 'dash' : ''}">${row.comp}</td>
+        <td class="val ${row.alt1 === '-' ? 'dash' : ''}">${row.alt1}</td>
+        <td class="val ${row.alt2 === '-' ? 'dash' : ''}">${row.alt2}</td>
+        <td class="val ${row.alt3 === '-' ? 'dash' : ''}">${row.alt3}</td>
+      </tr>`).join('')}
+    </tbody>`;
+  document.getElementById("results-title").textContent = "Comparison Table";
+  document.getElementById("spec-results-wrapper").style.display = 'block';
+  batchTableContainer.style.display = 'none';
+  document.getElementById('results-actions').style.display = 'flex';
+  document.getElementById('download-btn').style.display = 'none';
+  document.getElementById("results-container").classList.add("visible");
+}
+
+function displayBatchResults(results) {
+  const table = document.getElementById("batch-table");
+  table.innerHTML = `
+    <thead><tr>
+      <th>Part</th><th>Competitor</th><th>TI Alt 1</th><th>TI Alt 2</th><th>TI Alt 3</th>
+    </tr></thead>
+    <tbody>${results.map(row => `
+      <tr>
+        <td>${row.part || '-'}</td><td>${row.competitor || '-'}</td>
+        <td class="${!row.alt1 || row.alt1 === '-' ? 'dash' : ''}">${row.alt1 || '-'}</td>
+        <td class="${!row.alt2 || row.alt2 === '-' ? 'dash' : ''}">${row.alt2 || '-'}</td>
+        <td class="${!row.alt3 || row.alt3 === '-' ? 'dash' : ''}">${row.alt3 || '-'}</td>
+      </tr>`).join('')}
+    </tbody>`;
+  document.getElementById("results-title").textContent = `Batch Results (${results.length} rows)`;
+  document.getElementById("spec-results-wrapper").style.display = 'none';
+  batchTableContainer.style.display = 'block';
+  document.getElementById('results-actions').style.display = 'flex';
+  document.getElementById('download-btn').style.display = 'inline-block';
+  document.getElementById("results-container").classList.add("visible");
+
+  if (results.length > 5) {
+    batchTableContainer.classList.add('is-truncated');
+    seeAllContainer.style.display = 'block';
+  } else {
+    batchTableContainer.classList.remove('is-truncated');
+    seeAllContainer.style.display = 'none';
+  }
+}
+
+// --- Result Actions ---
+function copyTableToClipboard() {
+    const isBatchResult = batchData && batchData.length > 0;
+    const tableId = isBatchResult ? 'batch-table' : 'spec-table';
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const tableClone = table.cloneNode(true);
+    const container = document.createElement('div');
+    container.style.position = 'absolute'; container.style.left = '-9999px';
+    tableClone.setAttribute('border', '1'); tableClone.setAttribute('cellpadding', '5');
+    tableClone.setAttribute('cellspacing', '0'); tableClone.style.borderCollapse = 'collapse';
+    tableClone.style.fontFamily = 'Arial, sans-serif'; tableClone.style.fontSize = '12px';
+    tableClone.querySelectorAll('th, td').forEach(cell => {
+        cell.style.border = '1px solid #dddddd'; cell.style.textAlign = 'left';
+        cell.style.padding = '8px'; cell.style.whiteSpace = 'nowrap';
+    });
+    tableClone.querySelectorAll('th').forEach(th => {
+        th.style.backgroundColor = '#f2f2f2'; th.style.fontWeight = 'bold';
+    });
+    container.appendChild(tableClone); document.body.appendChild(container);
+    const blob = new Blob([container.innerHTML], { type: 'text/html' });
+    const clipboardItem = new ClipboardItem({ 'text/html': blob });
+    navigator.clipboard.write([clipboardItem]).then(() => {
+        const copyBtn = document.getElementById('copy-btn');
+        const originalText = copyBtn.textContent;
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = originalText; }, 1500);
+    }).catch(err => {
+        console.error('Failed to copy table as HTML: ', err);
+        alert('Could not copy table. This feature may not be supported in your browser.');
+    }).finally(() => { document.body.removeChild(container); });
+}
+
+function downloadCSV() {
+  if (!batchData || batchData.length === 0) return;
+  const header = "Part,Competitor,TI Alt 1,TI Alt 2,TI Alt 3\n";
+  const rows = batchData.map(r => 
+    [r.part, r.competitor, r.alt1, r.alt2, r.alt3]
+    .map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(",")
+  ).join("\n");
+  triggerDownload("cross_results.csv", "text/csv;charset=utf-8;", header + rows);
+}
+
+function triggerDownload(filename, type, content) {
+  const blob = new Blob([content], { type: type });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// --- Initial UI State ---
+updateUIState();
+</script>
+</body>
+</html>

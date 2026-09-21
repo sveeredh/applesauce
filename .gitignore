@@ -1,0 +1,6 @@
+.venv/
+.venv-test/
+__pycache__/
+data/.applesauce_cache/
+data/batch_output/
+archive/
