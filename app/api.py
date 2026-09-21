@@ -61,6 +61,10 @@ def _no_cache(response):
 def index():
     return send_from_directory(BASE_DIR, "index.html")
 
+@app.route("/ti.png", methods=["GET"])
+def logo():
+    return send_from_directory(BASE_DIR, "ti.png")
+
 
 jobs = {}
 
