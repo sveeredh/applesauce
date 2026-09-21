@@ -33,13 +33,14 @@ from applesauce import (
     _classify_digikey_package,
     _classify_ti_package,
     canonical_competitor_name,
+    is_no_cross_part,
     PACKAGE_DISPLAY_MAP,
     load_all_dfs,
     manage_data_files,
 )
 from ti_scrape import fetch_ti_specs_from_excel
 from ti_zener_scrape import fetch_ti_zener_specs_from_excel
-from parsing import normalize_package
+from parsing import normalize_package, is_blocked_competitor_package
 
 app = Flask(__name__)
 CORS(app)
@@ -123,6 +124,36 @@ def _format_watts(val_str):
     return val_str
 
 
+# Why a batch row came back without a cross. One of these lands in the
+# "reason" column of every un-crossed row.
+REASON_NO_PART = "No part number"
+REASON_NO_COMPETITOR = "No competitor name"
+REASON_TI_PART = "Already a TI part"
+REASON_UNKNOWN_COMPETITOR = "Competitor not in database"
+REASON_PART_NOT_FOUND = "No specs found for part"
+REASON_NO_CROSS_FAMILY = "Cannot compete: no-cross part family"
+REASON_BLOCKED_PACKAGE = "Cannot compete: SMx / DO- package"
+REASON_SPEC_GAP = "Cannot compete: spec gap"
+REASON_ERROR = "Error during lookup"
+
+_TI_NAMES = {"ti", "texas instruments", "texas instruments inc",
+             "texas instruments incorporated"}
+
+
+def _no_cross_reason(comp_specs):
+    """
+    Why find_ti_alternatives came back empty for a part it did have specs for.
+    Mirrors the two early exits at the top of that function; anything past
+    them means no TI part cleared the parametric filters.
+    """
+    if is_no_cross_part(comp_specs.get("Device Name", "")):
+        return REASON_NO_CROSS_FAMILY
+    if (is_blocked_competitor_package(comp_specs.get("Package"))
+            or is_blocked_competitor_package(comp_specs.get("Canonical Package"))):
+        return REASON_BLOCKED_PACKAGE
+    return REASON_SPEC_GAP
+
+
 # -- Shared cross logic ------------------------------------------------------
 def _run_cross(part, competitor):
     """
@@ -141,6 +172,10 @@ def _run_cross(part, competitor):
 
     alts = (find_ti_zener_alternatives(comp_specs, ti_zener_specs_df) if is_zener
             else find_ti_alternatives(comp_specs, ti_specs_df))
+    if not alts:
+        # Worked out here, while Package still holds the normalized value
+        # find_ti_alternatives just checked; it is reset for display below.
+        comp_specs["No Cross Reason"] = _no_cross_reason(comp_specs)
 
     param_keys = PARAM_KEYS_ZENER if is_zener else PARAM_KEYS_TVS
     src_df = ti_zener_specs_df if is_zener else ti_specs_df
@@ -293,14 +328,32 @@ def _process_batch_job(job_id, df):
             "competitor": canonical_competitor_name(competitor),
             "alt1": "-", "alt2": "-", "alt3": "-",
             "code1": "-", "code2": "-", "code3": "-",
+            "reason": "",
         }
-        if part and part.lower() != "nan" and competitor and competitor != "nan":
+        if not part or part.lower() == "nan":
+            result["reason"] = REASON_NO_PART
+        elif not raw_name or raw_name.lower() == "nan":
+            result["reason"] = REASON_NO_COMPETITOR
+        elif raw_name.lower() in _TI_NAMES:
+            result["reason"] = REASON_TI_PART
+        else:
             try:
-                _, _, alt_specs_list, alt_codes = _run_cross(part, competitor)
+                comp_specs, _, alt_specs_list, alt_codes = _run_cross(part, competitor)
             except Exception as exc:
                 # One bad part must not take the whole job down.
                 print(f"[Batch {job_id}] '{part}' ({competitor}) failed: {exc}")
-                alt_specs_list, alt_codes = [], []
+                comp_specs, alt_specs_list, alt_codes = None, [], []
+                result["reason"] = REASON_ERROR
+
+            if not result["reason"]:
+                if comp_specs is None:
+                    # A known competitor whose database lacks the part, versus a
+                    # name the tool has no database for at all.
+                    result["reason"] = (REASON_PART_NOT_FOUND if competitor_key(raw_name)
+                                        else REASON_UNKNOWN_COMPETITOR)
+                elif not alt_specs_list:
+                    result["reason"] = comp_specs.get("No Cross Reason") or REASON_SPEC_GAP
+
             opns = _alt_names(alt_specs_list) + ["-", "-", "-"]
             codes = list(alt_codes) + ["-", "-", "-"]
             result.update({

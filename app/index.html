@@ -330,6 +330,8 @@
   .spec-table .param-name { font-size: 12px; font-weight: 600; color: var(--mid); white-space: nowrap; }
   .spec-table .val, .batch-table td { font-family: var(--mono); white-space: nowrap; }
   .spec-table .val.dash, .batch-table td.dash { color: var(--fade); }
+  /* Why a batch row has no cross -- prose, not a part number, so not mono. */
+  .batch-table td.reason { font-family: inherit; font-size: 12px; color: var(--mid); }
   
   /* --- See All / Fade Effect --- */
   #batch-table-container.is-truncated .batch-table-wrap {
@@ -734,8 +736,10 @@ function resetForm() {
     removeFile();
     hideAllResults();
     showError("");
+    if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    batchData = [];
+    resetProgress();
     updateUIState();
-    if (pollInterval) clearInterval(pollInterval);
 }
 
 // --- Submission Logic ---
@@ -762,6 +766,13 @@ function showLoading(on) {
   if (!on) {
     if (pollInterval) clearInterval(pollInterval);
   }
+}
+
+function resetProgress(text = '') {
+  // The bar and its caption are shared by single and batch runs, so each run
+  // starts from a clean slate instead of inheriting "Processing 30 of 30".
+  progressBar.style.width = '0%';
+  progressText.textContent = text;
 }
 
 function showError(msg) {
@@ -803,7 +814,14 @@ function pollForProgress(jobId) {
 
 // --- API Calls ---
 async function submitSpec() {
-  showError(""); hideAllResults(); showLoading(true);
+  showError(""); hideAllResults();
+  // A single cross has no progress to report: fill the bar and say what it is
+  // doing. Clearing batchData also points the Copy button at this table
+  // rather than the last batch run.
+  batchData = [];
+  resetProgress('Searching…');
+  progressBar.style.width = '100%';
+  showLoading(true);
   try {
     const res = await fetch(`${API}/specs`, {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -821,7 +839,9 @@ async function submitSpec() {
 }
 
 async function submitBatch() {
-  showError(""); hideAllResults(); showLoading(true);
+  showError(""); hideAllResults();
+  resetProgress('Reading file…');
+  showLoading(true);
   const form = new FormData();
   form.append("file", inputFile);
   try {
@@ -864,7 +884,7 @@ function displayBatchResults(results) {
   const table = document.getElementById("batch-table");
   table.innerHTML = `
     <thead><tr>
-      <th>Part</th><th>Competitor</th><th>TI Alt 1</th><th>TI Alt 2</th><th>TI Alt 3</th>
+      <th>Part</th><th>Competitor</th><th>TI Alt 1</th><th>TI Alt 2</th><th>TI Alt 3</th><th>Reason</th>
     </tr></thead>
     <tbody>${results.map(row => `
       <tr>
@@ -872,6 +892,7 @@ function displayBatchResults(results) {
         <td class="${!row.alt1 || row.alt1 === '-' ? 'dash' : ''}">${row.alt1 || '-'}</td>
         <td class="${!row.alt2 || row.alt2 === '-' ? 'dash' : ''}">${row.alt2 || '-'}</td>
         <td class="${!row.alt3 || row.alt3 === '-' ? 'dash' : ''}">${row.alt3 || '-'}</td>
+        <td class="reason">${escapeHtml(row.reason || '')}</td>
       </tr>`).join('')}
     </tbody>`;
   document.getElementById("results-title").textContent = `Batch Results (${results.length} rows)`;
@@ -925,9 +946,9 @@ function copyTableToClipboard() {
 
 function downloadCSV() {
   if (!batchData || batchData.length === 0) return;
-  const header = "Part,Competitor,TI Alt 1,TI Alt 2,TI Alt 3\n";
+  const header = "Part,Competitor,TI Alt 1,TI Alt 2,TI Alt 3,Reason\n";
   const rows = batchData.map(r => 
-    [r.part, r.competitor, r.alt1, r.alt2, r.alt3]
+    [r.part, r.competitor, r.alt1, r.alt2, r.alt3, r.reason]
     .map(val => `"${(val || '').toString().replace(/"/g, '""')}"`).join(",")
   ).join("\n");
   triggerDownload("cross_results.csv", "text/csv;charset=utf-8;", header + rows);
