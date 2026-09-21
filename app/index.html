@@ -272,11 +272,13 @@
   .error-msg.visible { display: block; }
 
   .results-container { display: none; margin-top: 28px; }
-  /* Only as wide as the table inside needs, up to the full page width, and
-     centred. The title and Copy button sit on the table's edges, not the page's. */
+  /* Grows with the table inside, from a 1000px floor up to the full page
+     width, and centred. The title and Copy button sit on the table's edges,
+     not the page's. */
   .results-container.visible {
     display: block;
     width: fit-content;
+    min-width: min(1000px, 100%);
     max-width: 100%;
     margin-left: auto;
     margin-right: auto;
@@ -314,7 +316,7 @@
   
   .spec-table-wrap, .batch-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--white); }
   .spec-table, .batch-table {
-    width: auto;
+    width: 100%;   /* fills the container, which is itself sized to the content */
     border-collapse: collapse;
     font-size: 13px;
   }
