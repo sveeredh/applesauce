@@ -7,3 +7,6 @@ tabulate==0.10.0
 waitress==3.0.2
 selenium==4.45.0
 webdriver-manager==4.1.2
+beautifulsoup4==4.15.0
+requests==2.34.2
+tqdm==4.68.3
