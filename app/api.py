@@ -109,14 +109,14 @@ _W_VALUE_RE = re.compile(r'^\s*([\d.]+)\s*W?\s*$', re.IGNORECASE)
 
 
 # -- Helpers -----------------------------------------------------------------
-def _w_to_mw(val_str):
-    """Convert a TI power value in W to a mW string."""
+def _format_watts(val_str):
+    """TI power figure -> "25 W". Both TI sheets already state power in watts."""
     if not val_str or val_str == "-":
         return val_str
     match = _W_VALUE_RE.match(str(val_str))
     if match:
         try:
-            return f"{float(match.group(1)) * 1000:g} mW"
+            return f"{float(match.group(1)):g} W"
         except ValueError:
             pass
     return val_str
@@ -169,7 +169,7 @@ def _run_cross(part, competitor):
                 if ppp_col:
                     ppp_val = str(match_row.iloc[0][ppp_col]).strip()
                     if ppp_val not in ("-", "nan", ""):
-                        specs["Power Dissipation (Pd)"] = _w_to_mw(ppp_val)
+                        specs["Power Dissipation (Pd)"] = _format_watts(ppp_val)
 
         specs["OPN"] = _generate_ti_opn(
             gpn, specs.get("Package", "-"), ti_pin_str,

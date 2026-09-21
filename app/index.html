@@ -831,9 +831,8 @@ function displaySpecResults(data) {
   const table = document.getElementById("spec-table");
   table.innerHTML = `
     <thead><tr>
-      <th>Parameter</th><th>Competitor (${data.competitor_part.toUpperCase()})</th>
-      ${(data.alt_names || []).map(n => `<th class="ti-col">TI Alt (${n})</th>`).join('')}
-      ${Array(3 - (data.alt_names || []).length).fill('<th class="ti-col">TI Alt (—)</th>').join('')}
+      <th>Parameter</th><th>Competitor (${data.competitor_name || data.competitor_part})</th>
+      ${[1, 2, 3].map(i => `<th class="ti-col">TI Alt ${i}</th>`).join('')}
     </tr></thead>
     <tbody>${(data.rows || []).map(row => `
       <tr>
