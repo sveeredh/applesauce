@@ -1350,6 +1350,7 @@ _COMPETITOR_NAME_ALIASES = {
     "Vishay Semiconductors": ["vishay"],
     "Yangzhou Yangjie Electronics Co Ltd": ["yangjie", "yj"],
     "Yenyo Technology": ["yenyo"],
+    "Texas Instruments": ["ti", "texas instruments"]
 }
 
 COMPETITOR_CANONICAL_NAMES = {
@@ -1374,6 +1375,152 @@ def canonical_competitor_name(raw_name):
         if re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", key):
             return COMPETITOR_CANONICAL_NAMES[alias]
     return str(raw_name).strip().title()
+
+# ============================================================================
+# TI parts as the "competitor" (TI -> TI cross)
+#
+# A TI part is looked up in TI's own spec sheets and turned into the same
+# specs dict a competitor scraper returns, so the normal matchers can cross it.
+# The input may be a GPN (TPD1E10B09-Q1) or an OPN (TPD1E10B09QDPYRQ1); an OPN
+# also pins down which package it ships in.
+# ============================================================================
+
+TI_COMPETITOR_NAMES = {"ti", "texas instruments", "texas instruments inc",
+                       "texas instruments incorporated"}
+
+# Package suffix -> every canonical package that uses it, the reverse of
+# CANONICAL_SUFFIX_MAP. Several share one (DRLR is SOT5X3_2/3/5/6), so the
+# part's own pin count picks between them.
+_SUFFIX_TO_CANONICALS = {}
+for _canon, _suffix in CANONICAL_SUFFIX_MAP.items():
+    _SUFFIX_TO_CANONICALS.setdefault(_suffix, []).append(_canon)
+
+
+def _canonical_from_suffix(rest, pin_text):
+    """
+    What's left of an OPN after the GPN base ("DPYR", or "QDPYR" behind a
+    qualifier letter) -> its canonical package, or None if it can't be told.
+    """
+    pins = {int(float(p)) for p in re.findall(r"\d+(?:\.\d+)?", str(pin_text))}
+    for suffix in (rest, rest[1:]):
+        candidates = _SUFFIX_TO_CANONICALS.get(suffix, [])
+        if len(candidates) == 1:
+            return candidates[0]
+        by_pins = [c for c in candidates if int(c.rsplit("_", 1)[1]) in pins]
+        if len(by_pins) == 1:
+            return by_pins[0]
+    return None
+
+
+def _ti_norm(text):
+    return re.sub(r'[\W_]+', '', str(text)).upper()
+
+
+def _resolve_ti_gpn(norm_input, df, pn_col):
+    """
+    GPN or OPN -> the GPN row it belongs to, plus whatever of the input is left
+    over after the GPN base (the OPN's package suffix). Returns (gpn, rest) or
+    (None, None).
+
+    An OPN is the GPN base with letters appended, so the longest base that
+    prefixes the input wins -- and the next character has to be a letter, so
+    ESD7011 is not read as ESD701 plus a suffix. A trailing Q1 picks the -Q1
+    row over its commercial sibling.
+    """
+    wants_q1 = norm_input.endswith("Q1")
+    best = None
+    for gpn in df[pn_col].dropna().astype(str):
+        gpn = gpn.strip()
+        if not gpn:
+            continue
+        up = gpn.upper()
+        is_q1 = up.endswith("-Q1")
+        if _ti_norm(up) == norm_input:
+            return gpn, ""
+        base = _ti_norm(up[:-3] if is_q1 else up)
+        if not base or not norm_input.startswith(base):
+            continue
+        rest = norm_input[len(base):]
+        if rest and not rest[0].isalpha():
+            continue
+        rank = (len(base), is_q1 == wants_q1)
+        if best is None or rank > best[0]:
+            best = (rank, gpn, rest)
+    if best is None:
+        return None, None
+    _, gpn, rest = best
+    if gpn.upper().endswith("-Q1") and rest.endswith("Q1"):
+        rest = rest[:-2]
+    return gpn, rest
+
+
+def _ti_value(value, unit="", prefix=""):
+    """A TI sheet cell -> the "5.5 V" style string the matchers parse."""
+    text = safe_strip(value)
+    if text in ("", "-") or text.lower() in ("nan", "none"):
+        return "-"
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    return f"{prefix}{number:g} {unit}".strip()
+
+
+def fetch_ti_part_as_competitor(part_input, ti_specs_df, ti_zener_specs_df):
+    """TI GPN or OPN -> a competitor-style specs dict, or None if TI doesn't list it."""
+    norm_input = _ti_norm(part_input)
+    if not norm_input:
+        return None
+
+    for df, is_zener in ((ti_specs_df, False), (ti_zener_specs_df, True)):
+        if df is None or df.empty:
+            continue
+        pn_col = next((c for c in df.columns if "product or part number" in str(c).lower()), None)
+        if pn_col is None:
+            continue
+        gpn, rest = _resolve_ti_gpn(norm_input, df, pn_col)
+        if gpn is None:
+            continue
+        row = df[df[pn_col].astype(str).str.strip() == gpn].iloc[0]
+        col = lambda *keys: next((row[c] for c in df.columns
+                                  if all(k in str(c).lower() for k in keys)), None)
+
+        # The OPN's suffix names the package; with a bare GPN every package
+        # the part ships in is offered to the matcher.
+        canonical = _canonical_from_suffix(rest, col("pin count")) if rest else None
+        packages = safe_strip(col("package name")) or "-"
+
+        specs = {
+            "Device Name": gpn,
+            "Source File": "TI Zener" if is_zener else "TI ESD/TVS",
+            "Grade": "Automotive" if gpn.upper().endswith("-Q1") else "Commercial",
+            "Package": packages,
+            "Price ($/ku)": _ti_value(col("price")),
+        }
+        if canonical:
+            specs["Canonical Package"] = canonical
+
+        if is_zener:
+            specs.update({
+                "Voltage - Reverse Standoff (Typ)": _ti_value(col("vz (nom)"), "V"),
+                "Tolerance": _ti_value(col("tolerance")),
+                "Power Dissipation (Pd)": _ti_value(col("pd (max)"), "W"),
+            })
+        else:
+            direction = safe_strip(col("bi-/uni-directional")).lower()
+            specs.update({
+                "Direction": ("Unidirectional" if "uni" in direction
+                              else "Bidirectional" if "bi" in direction else "-"),
+                "Voltage - Reverse Standoff (Typ)": _ti_value(col("vrwm"), "V"),
+                "Voltage - Clamping (Max) @ Ipp": _ti_value(col("clamping voltage"), "V"),
+                "Capacitance": _ti_value(col("io capacitance"), "pF"),
+                "Channels": (lambda ch: "1" if ch == "-" else ch)(_ti_value(col("number of channels"))),
+                "IEC 61000-4-5": _ti_value(col("iec 61000-4-5"), "A"),
+                "IEC 61000-4-2": _ti_value(col("iec 61000-4-2"), "kV", prefix="±"),
+                "Power Dissipation (Pd)": _ti_value(col("peak pulse power"), "W"),
+            })
+        return specs
+    return None
 
 def get_competitor_specs_leniently(part_input, competitor_name, all_dfs):
     """
@@ -1406,7 +1553,16 @@ def get_competitor_specs_leniently(part_input, competitor_name, all_dfs):
 
     exact_part_name = None
     comp_specs = None
-
+    # TI -> TI: the part comes out of TI's own sheets. Exact name match, so no
+    # other competitor's branch can claim it and "ti" can't match by accident.
+    if competitor_name.strip().lower() in TI_COMPETITOR_NAMES:
+        comp_specs = fetch_ti_part_as_competitor(part_input, ti_specs_df, ti_zener_specs_df)
+        if comp_specs:
+            print(f"Found TI part '{comp_specs['Device Name']}' in TI's own sheets.")
+        else:
+            print(f"Could not find '{part_input}' in TI's spec sheets.")
+        return comp_specs
+    
     is_comchip_part = any(k in competitor_name for k in ["comchip", "comchiptech"])
     if is_comchip_part:
         comp_specs = fetch_comchip_specs(part_input, comchip_esd_df, comchip_tvs_df, comchip_zener_df)

@@ -128,16 +128,12 @@ def _format_watts(val_str):
 # "reason" column of every un-crossed row.
 REASON_NO_PART = "No part number"
 REASON_NO_COMPETITOR = "No competitor name"
-REASON_TI_PART = "Already a TI part"
 REASON_UNKNOWN_COMPETITOR = "Competitor not in database"
 REASON_PART_NOT_FOUND = "No specs found for part"
 REASON_NO_CROSS_FAMILY = "Cannot compete: no-cross part family"
 REASON_BLOCKED_PACKAGE = "Cannot compete: SMx / DO- package"
 REASON_SPEC_GAP = "Cannot compete: spec gap"
 REASON_ERROR = "Error during lookup"
-
-_TI_NAMES = {"ti", "texas instruments", "texas instruments inc",
-             "texas instruments incorporated"}
 
 
 def _no_cross_reason(comp_specs):
@@ -334,8 +330,6 @@ def _process_batch_job(job_id, df):
             result["reason"] = REASON_NO_PART
         elif not raw_name or raw_name.lower() == "nan":
             result["reason"] = REASON_NO_COMPETITOR
-        elif raw_name.lower() in _TI_NAMES:
-            result["reason"] = REASON_TI_PART
         else:
             try:
                 comp_specs, _, alt_specs_list, alt_codes = _run_cross(part, competitor)

@@ -37,7 +37,9 @@
 
   /* ── Main layout ── */
   main {
-    max-width: 980px;
+    /* Wide enough for the batch table's six columns side by side. The form
+       above keeps its own 800px cap, so only the results use the extra room. */
+    max-width: 1440px;
     margin: 48px auto;
     padding: 0 24px;
     display: flex;
@@ -255,7 +257,6 @@
   .status-container {
     margin-top: 48px;
     width: 100%;
-    max-width: 900px;
   }
 
   .error-msg {
@@ -332,6 +333,23 @@
   .spec-table .val.dash, .batch-table td.dash { color: var(--fade); }
   /* Why a batch row has no cross -- prose, not a part number, so not mono. */
   .batch-table td.reason { font-family: inherit; font-size: 12px; color: var(--mid); }
+  /* Company names and reasons are the only prose columns, so they are the ones
+     allowed to wrap; part numbers stay on one line. */
+  .batch-table td.comp, .batch-table td.reason { white-space: normal; }
+
+  /* Narrower windows: tighten the cell padding first, so the prose columns
+     (competitor, reason) take the squeeze while part numbers stay whole. */
+  @media (max-width: 1100px) {
+    .spec-table th, .spec-table td, .batch-table th, .batch-table td { padding-left: 8px; padding-right: 8px; }
+  }
+  /* Too narrow even for that: every cell may wrap, mid-part-number if it has
+     to, so the table always fits the page instead of scrolling sideways. */
+  @media (max-width: 860px) {
+    .spec-table th, .spec-table td, .batch-table th, .batch-table td {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+  }
   
   /* --- See All / Fade Effect --- */
   #batch-table-container.is-truncated .batch-table-wrap {
@@ -888,7 +906,7 @@ function displayBatchResults(results) {
     </tr></thead>
     <tbody>${results.map(row => `
       <tr>
-        <td>${row.part || '-'}</td><td>${row.competitor || '-'}</td>
+        <td>${row.part || '-'}</td><td class="comp">${row.competitor || '-'}</td>
         <td class="${!row.alt1 || row.alt1 === '-' ? 'dash' : ''}">${row.alt1 || '-'}</td>
         <td class="${!row.alt2 || row.alt2 === '-' ? 'dash' : ''}">${row.alt2 || '-'}</td>
         <td class="${!row.alt3 || row.alt3 === '-' ? 'dash' : ''}">${row.alt3 || '-'}</td>
