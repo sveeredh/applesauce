@@ -700,15 +700,39 @@ def normalize_structured_package(pkg_str_input):
         return {"type": "SOT5X3_GENERIC"}
 
     return None # Return None if no structured rule matches
-# --- unit conversion ---
+
+# A cell holding several values ("15,24", "17.1,25.4"): a comma-separated list
+# of plain numbers, each optionally with a unit. Deliberately strict -- it must
+# match the entire cell -- so "9 A (8/20us)" is not read as a list of 9, 8, 20.
+_VALUE_LIST_RE = re.compile(r"^\s*(?:±\s*)?[\d.]+\s*[a-zµμω%]*\s*(?:,\s*(?:±\s*)?[\d.]+\s*[a-zµμω%]*\s*)+$")
+
+# A thousands separator, not a list: a comma followed by exactly three digits.
+# "1,500 W" is 1500 W, and without this it would read as max(1, 500) = 500.
+_THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
 def to_numeric_val(value_str, default_if_error=float('inf')):
+    """
+    A spec cell -> a number. Where a cell lists several values, the HIGHEST is
+    taken: these are the part's worst case, and picking the first (lowest)
+    would let a part look better than it is and cross on specs it cannot meet.
+    """
     if value_str is None or value_str == "-":
         return default_if_error
     value_str = str(value_str).lower()
-    numeric_part = re.search(r"([\d.]+)", value_str)
-    if not numeric_part:
-        return default_if_error
-    val = float(numeric_part.group(1))
+    value_str = _THOUSANDS_RE.sub("", value_str)
+
+    if _VALUE_LIST_RE.match(value_str):
+        numbers = [float(n) for n in re.findall(r"[\d.]+", value_str) if n.strip(".")]
+        if not numbers:
+            return default_if_error
+        val = max(numbers)
+    else:
+        numeric_part = re.search(r"([\d.]+)", value_str)
+        if not numeric_part:
+            return default_if_error
+        val = float(numeric_part.group(1))
+
     if "kv" in value_str: val *= 1000
     elif "mv" in value_str: val /= 1000
     # for capacitance (pF is base)

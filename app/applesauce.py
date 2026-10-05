@@ -8,7 +8,6 @@ import pandas as pd
 import sys
 import contextlib
 import io
-from multi_value import max_of_lists_everywhere
 from get_data import _unblock_csv_file, download_and_rename_ti_specs, download_and_rename_ti_zener_specs, download_and_rename_aos_specs, download_diodes_specs, download_nexperia_specs, download_littelfuse_specs, download_jiangsu_specs, download_semtech_specs
 from find_package_matches import find_package_matches
 from parsing import safe_strip, is_blocked_competitor_package, requires_exact_package_match, normalize_package, normalize_structured_package, to_numeric_val, normalize_aos_package, normalize_amazing_package, normalize_diodes_package, normalize_nexperia_package, normalize_littelfuse_package, normalize_jiangsu_package, normalize_semtech_package
@@ -3484,8 +3483,6 @@ def load_all_dfs(force_reload=False):
         infineon_specs_df,
         ti_specs_df, ti_zener_specs_df
     )
-
-    all_dfs = max_of_lists_everywhere(all_dfs[:-2]) + all_dfs[-2:]
 
     print("All databases loaded and ready.")
 
