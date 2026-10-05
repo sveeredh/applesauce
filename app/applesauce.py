@@ -2506,10 +2506,9 @@ def find_ti_alternatives(competitor_specs, ti_specs_df):
             # parametric fit in the wrong family cannot take the cross.
             (comp_mmbz_variant is not None
              and _mmbz_variant(alt["part_number"]) == comp_mmbz_variant),
-            
-            alt["score"],
             (comp_interface_family is not None
              and _interface_family(alt["part_number"]) == comp_interface_family),
+            alt["score"],
             alt["exact_vrw_match"],
             alt["exact_vrw_match"],
             alt["capacitance"],

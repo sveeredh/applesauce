@@ -926,11 +926,29 @@ def _leshan_text(value):
     return clean_text(value)
 
 
+# A cell holding several values ("15,24", "17.1,25.4"), and a thousands
+# separator, which is a comma followed by exactly three digits ("1,200" is
+# 1200, not a list of 1 and 200).
+_LESHAN_VALUE_LIST_RE = re.compile(r"^\s*[\d.]+\s*(?:,\s*[\d.]+\s*)+$")
+_LESHAN_THOUSANDS_RE = re.compile(r"(?<=\d),(?=\d{3}(?!\d))")
+
+
 def _numeric_or_none(value):
-    """First number in a cell, or None if the cell is blank or non-numeric."""
+    """
+    The number in a cell, or None if the cell is blank or non-numeric.
+
+    Where a row lists several values ("15,24"), the HIGHEST is taken: it is the
+    part's worst case, and the lowest would let it cross on specs it cannot
+    meet. The list pattern has to match the whole cell, so an annotated value
+    is never mistaken for a list.
+    """
     text = _leshan_text(value)
     if text in ("", "/", "-", "--", "N/A", "NA"):
         return None
+    text = _LESHAN_THOUSANDS_RE.sub("", text)
+    if _LESHAN_VALUE_LIST_RE.match(text):
+        numbers = [float(n) for n in re.findall(r"[\d.]+", text) if n.strip(".")]
+        return max(numbers) if numbers else None
     numeric_match = re.search(r"[\d.]+", text)
     if not numeric_match:
         return None
@@ -938,7 +956,6 @@ def _numeric_or_none(value):
         return float(numeric_match.group(0))
     except (ValueError, TypeError):
         return None
-
 
 def _value_by_prefix(row, *prefixes):
     """Cell value for the first header matching one of the prefixes."""
@@ -963,6 +980,23 @@ def _leshan_grade(part_row):
 def _leshan_package(part_row):
     return _leshan_text(_value_by_prefix(part_row, "Package")) or "-"
 
+# A protocol in the part name means a bus-line part, which is bidirectional:
+# CAN and LIN both swing below ground, so these are never unidirectional
+# whatever the rest of the name says.
+_LESHAN_BIDI_PROTOCOL_RE = re.compile(r"CAN|LIN", re.IGNORECASE)
+
+# CAN runs as a differential pair (CANH / CANL), so a CAN part protects two
+# lines. LIN is a single wire and stays at one channel.
+_LESHAN_CAN_RE = re.compile(r"CAN", re.IGNORECASE)
+
+
+def _leshan_name_is_can(part_number):
+    return bool(_LESHAN_CAN_RE.search(str(part_number or "")))
+
+def _leshan_name_is_bidirectional(part_number):
+    """True when the part name carries a bus protocol (S-LR1LINT1G, ...)."""
+    return bool(_LESHAN_BIDI_PROTOCOL_RE.search(str(part_number or "")))
+
 def _leshan_esd_direction(part_number):
     """
     Leshan/LRC LESD naming:
@@ -976,6 +1010,10 @@ def _leshan_esd_direction(part_number):
         LESD8D3.3CN3T5G    -> Bidirectional
     """
     part = str(part_number or "").upper().strip()
+
+     # A bus-line part is bidirectional even without the C marker.
+    if _leshan_name_is_bidirectional(part):
+        return "Bidirectional"
 
     # C directly after the numeric voltage means bidirectional.
     if re.search(r"\d+(?:\.\d+)?C", part):
@@ -993,6 +1031,9 @@ def _leshan_esd_channels(part_number):
     Current verified LESD parts without N3 are single-channel.
     """
     part = str(part_number or "").upper().strip()
+
+    if _leshan_name_is_can(part):
+        return "2"
 
     if "N3" in part:
         return "2"
@@ -1067,14 +1108,16 @@ def _parse_leshan_tvs_row(part_row, found_df_name, part_number):
     # The Bi-Directional column is a flag, not a two-value field: a Y marks a
     # bidirectional part and a blank cell means unidirectional.
     bidi = _leshan_text(_value_by_prefix(part_row, "Bi-Directional", "BiDirectional")).upper()
-    direction = "Bidirectional" if bidi.startswith("Y") else "Unidirectional"
+    direction = ("Bidirectional"
+                 if bidi.startswith("Y") or _leshan_name_is_bidirectional(part_number)
+                 else "Unidirectional")
 
     specs_result = {
         "Device Name": str(part_number).upper(),
         "Source File": found_df_name,
         "Grade": _leshan_grade(part_row),
         "Direction": direction,
-        "Channels": "1",
+        "Channels": "2" if _leshan_name_is_can(part_number) else "1",
         "Package": _leshan_package(part_row),
         "Voltage - Reverse Standoff (Typ)": "-",
         "Voltage - Clamping (Max) @ Ipp": "-",
